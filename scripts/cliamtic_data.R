@@ -19,8 +19,8 @@ aranj <- "3100B"
 
 ## Use this function to register your API Key temporarly or permanently
 # REceived the API in my email. 
-#aemet_api_key("eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJwYXNjaGFsaXMuY2hhdHpvcG91bG9zQGdtLnVjYS5lcyIsImp0aSI6Ijg4YmVlZDM3LTdiZDUtNDYwYy1iNGEwLTg4MmQzNmE3ZjM5YyIsImlzcyI6IkFFTUVUIiwiaWF0IjoxNjg2MjE0ODk0LCJ1c2VySWQiOiI4OGJlZWQzNy03YmQ1LTQ2MGMtYjRhMC04ODJkMzZhN2YzOWMiLCJyb2xlIjoiIn0.Od2RGc1y6XFkp7dtQeGuI61G5svO7m53tfXvUrtHq-k", 
-#install = TRUE)
+aemet_api_key("eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJwYXNjaGFsaXMuY2hhdHpvcG91bG9zQGdtLnVjYS5lcyIsImp0aSI6Ijg4YmVlZDM3LTdiZDUtNDYwYy1iNGEwLTg4MmQzNmE3ZjM5YyIsImlzcyI6IkFFTUVUIiwiaWF0IjoxNjg2MjE0ODk0LCJ1c2VySWQiOiI4OGJlZWQzNy03YmQ1LTQ2MGMtYjRhMC04ODJkMzZhN2YzOWMiLCJyb2xlIjoiIn0.Od2RGc1y6XFkp7dtQeGuI61G5svO7m53tfXvUrtHq-k", 
+install = TRUE)
 
 # Test data to see if are available data:
 test <- aemet_daily_clim(aranj, start = "2011-01-01", end = "2011-12-31")
@@ -38,23 +38,26 @@ data_daily_2 <-
 # Merge datasets
 data <- bind_rows(data_daily_0, data_daily_1, data_daily_2)
 
+#write.csv(data, "scripts//climatic_data_aranjuez.csv", row.names = FALSE)
+
+data <- read.csv("scripts//climatic_data_aranjuez.csv")
+
 # Tity data:
-data <- data %>%
+data.tidy <- data %>%
   mutate(
-    fecha = as.Date(fecha),
     prec = as.numeric(prec),
     tmed = as.numeric(tmed),
     tmin = as.numeric(tmin),
     tmax = as.numeric(tmax)) %>%
   # split date into year, month, day
-  separate(fecha, into = c("year", "month", "day"), sep = "-")
+  filter(!is.na(prec))
 
 # Data only for 2011:
-data_2011 <- data %>%
+data_2011 <- data.tidy %>%
   filter(year == "2011")
 
 # Calculate monthly precipitation:
-avg_prec <- data %>%
+avg_prec <- data.tidy %>%
   group_by(year, month) %>%
   summarise(month_prec = sum(prec, na.rm = TRUE)) %>%
   # month as numeric
@@ -81,11 +84,11 @@ plot_1 <- ggplot(avg_prec, aes(x = month, y = month_prec, group = year)) +
         panel.grid.minor = element_blank())
 
 # Export precipitation graph:
-ggsave("exports///precipitation.png", plot_1, width = 20, height = 12, units = "cm", dpi = 300)
+#ggsave("exports///precipitation.png", plot_1, width = 20, height = 12, units = "cm", dpi = 300)
 
 # Calculate the Standardized Precipitation Index (SPI) for the region:
 # Step 1: Prepare the data by summarizing total monthly precipitation
-precip_data <- data %>%
+precip_data <- data.tidy %>%
   group_by(year, month) %>%
   summarise(total_precip = sum(prec, na.rm = TRUE), .groups = 'drop') %>%
   mutate(year_month = as.Date(paste(year, month, "01", sep = "-")))

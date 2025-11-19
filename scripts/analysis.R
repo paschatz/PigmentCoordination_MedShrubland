@@ -630,36 +630,40 @@ pigment_df <- pigment_final_df %>%
 # Figure 3 ----
 # Visualize:
 figure3 <- ggplot(coupling_df, aes(x = N, y = coupling, color = treatment, group = treatment, fill = treatment)) +
-  geom_line(size = 1, show.legend = FALSE, linewidth = 1, alpha = 1) +
-  geom_ribbon(aes(ymin = quan_coup_5.0, ymax = quan_coup_95.0), alpha = 0.4,
-              show.legend = FALSE) +
+  geom_line(size = 0.6, show.legend = FALSE, linewidth = 0.6, alpha = 1) +
+  geom_ribbon(aes(ymin = quan_coup_5.0, ymax = quan_coup_95.0), alpha = 0.3, linewidth = 0.8,
+              show.legend = FALSE, linetype = 0) +
   geom_point(aes(x = N, y = coupling), 
-             size = 3, shape = 20, alpha = 1,
+             size = 2.5, shape = 20, alpha = 1,
              show.legend = FALSE) +
   scale_color_manual(values = col_palette_treat) +
   scale_fill_manual(values = col_palette_treat) +
-  scale_x_discrete(expand = c(0.01, 0.01)) +
+  scale_x_discrete(expand = c(0.03, 0.03)) +
   facet_wrap(~ treatment, ncol = 2) +
   labs(x = expression("kg·N·ha"^-1~yr^-1*""),
        y = "Pigment coupling (|Spearman correlation|)") +
-  ylim(0, 1) +
-  theme_pubclean() + 
+  ylim(0, 0.8) +
+  theme_pubclean() +
   theme_pub +
   theme(panel.spacing = unit(0.5, "lines")) +
   # Add text annotations
-  annotate("text", x = 2.26, y = 0.6, color = "antiquewhite4",
-           label = "Coupled", size = 4, hjust = 0) +
+  annotate("text", x = 2.25, y = 0.5, color = "antiquewhite4",
+           label = "Coupled", size = 2, hjust = 0) +
   annotate("text", x = 2.2, y = 0.375, color = "antiquewhite4",
-           label = "Decoupled", size = 4, hjust = 0) +
-  annotate("text", x = 2.18, y = 0.15, color = "antiquewhite4",
-           label = "Anticoupled", size = 4, hjust = 0)
-
+           label = "Decoupled", size = 2, hjust = 0) +
+  annotate("text", x = 2.18, y = 0.25, color = "antiquewhite4",
+           label = "Anticoupled", size = 2, hjust = 0) +
+  theme(aspect.ratio = 1,
+        axis.title.y = element_text(colour = "black", size = 8),
+        axis.title.x = element_text(colour = "black", size = 7),
+        axis.text = element_text(colour = "black", size = 8),
+        strip.text = element_text(colour = "black", size = 8))
 figure3
 
 # Export
-ggsave("exports/figures//figure3.jpeg", figure3, width = 20, height = 12, unit = "cm", dpi = 300)
+ggsave("exports/figures//figure3.jpeg", figure3, width = 16, height = 8, unit = "cm", dpi = 300)
 
-# Supplementary figure 1 ----
+# Supplementary figure 3 ----
 # Set theme for plot
 custom_theme <- theme(
   axis.text.y = element_text(colour = "black", size = 14),
@@ -667,7 +671,7 @@ custom_theme <- theme(
   strip.text = element_text(size = 12),
   legend.text = element_text(colour = "black", size =12),
   legend.position = "bottom",
-  axis.title.y = element_text(size = 14),
+  axis.title.y = element_text(size = 14, colour = "black"),
   axis.title.x = element_text(size = 14, colour = "black"),
   panel.background = element_blank(),
   panel.border = element_rect(color = "black", fill = NA, size = 1),
@@ -675,8 +679,10 @@ custom_theme <- theme(
   panel.grid.major = element_blank(),
   panel.grid.minor = element_blank(),
   axis.ticks = element_line(size = 0.4),
-  axis.line = element_line(size = 0.5)
+  axis.line = element_line(size = 0)
 )
+
+pigment_df$facet_group <- paste(pigment_df$pigment, pigment_df$treatment, sep = "_")
 
 # Visualize pigment coupling:
 figureS3 <- ggplot(pigment_df, aes(x = N, y = pig_coup, 
@@ -685,7 +691,7 @@ figureS3 <- ggplot(pigment_df, aes(x = N, y = pig_coup,
                                   fill = treatment)) +
   geom_line(size = 1, linewidth = 1) +
   geom_ribbon(aes(ymin = quan_coup_5.0, ymax = quan_coup_95.0), alpha = 0.2,
-              show.legend = FALSE) +
+              show.legend = FALSE, linetype = 0) +
   geom_point(aes(x = N, y = pig_coup), 
              size = 3, shape = 20, alpha = 1, show.legend = FALSE) +
   labs(x = expression("kg N ha"^-1~yr^-1*""),
@@ -695,9 +701,23 @@ figureS3 <- ggplot(pigment_df, aes(x = N, y = pig_coup,
   scale_x_discrete(expand = c(0.01, 0.05)) + 
   scale_color_manual(values = col_palette_treat) +
   scale_fill_manual(values = col_palette_treat) +
-  facet_wrap(~ pigment + treatment, ncol = 4, labeller = labeller(treatment = function(x) "")) +
+  facet_wrap(~ facet_group, ncol = 4, 
+             labeller = labeller(facet_group = function(x) {
+               # Regex to keep only the text BEFORE the "_" (The Pigment Name)
+               sub("_.*", "", x) 
+             })) +
   theme_minimal() +
-  custom_theme
+  custom_theme +
+  theme(aspect.ratio = 1,
+        axis.title.y = element_text(size = 11, colour = "black"),
+        axis.title.x = element_text(size = 11, colour = "black"),
+        axis.text.y = element_text(colour = "black", size = 8),
+        axis.text.x = element_text(colour = "black", size = 8),
+        legend.text = element_text(colour = "black", size =10),
+        strip.text = element_text(
+          margin = margin(t = 0, b = 2, r = 0, l = 0),
+          vjust = 0, size = 10
+        ))
 
 figureS3
 
@@ -715,129 +735,349 @@ pigment_df_long <- pigment_df %>%
                names_to = "comparison", 
                values_to = "pig_coup")
 
-# Figure 5 ----
+n_labels_fig_4 <- c(
+  "N 10" = "10~kg~N~ha^{-1}~yr^{-1}",
+  "N 20" = "20~kg~N~ha^{-1}~yr^{-1}",
+  "N 50" = "50~kg~N~ha^{-1}~yr^{-1}")
+
+
+# Figure 4 ----
 # Plot all comparisons with N=0 in one plot, ensuring the same scale
 figure4 <- ggplot(pigment_df_long, aes(x = `N 0`, y = pig_coup)) +
-  geom_point(aes(color = pigment), size = 3) +
-  geom_smooth(method = "lm", se = FALSE, color = "black") +
-  facet_grid(treatment ~ comparison, scales = "fixed") +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray") +
+  geom_smooth(method = "lm", se = FALSE, color = "black", linewidth = 0.5) +
+  geom_point(aes(color = pigment), size = 1) +
+  facet_grid(treatment ~ comparison, 
+             scales = "fixed", 
+             labeller = labeller(comparison = as_labeller(n_labels_fig_4, label_parsed))) +
   labs(x = "Single pigment coupling (control)", 
        y = "Single pigment coupling (N load)", color = "") +
   ylim(0.2, 0.9) +
   xlim(0.2, 0.9) +
   # add 1:1 abline
-  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray") +
   theme_minimal() +
+  coord_fixed() +
   custom_theme +
   theme(
-    panel.border = element_rect(color = "black", fill = NA, size = 1),
-    legend.text = element_text(colour = "black", size =10),
+    axis.title.y = element_text(size = 10, colour = "black"),
+    axis.title.x = element_text(size = 10, colour = "black"),
+    axis.text.y = element_text(colour = "black", size = 7),
+    axis.text.x = element_text(colour = "black", size = 7),
+    strip.text = element_text(colour = "black", size = 7),
+    legend.text = element_text(colour = "black", size =7),
     legend.key.size = unit(0.2, "cm"))
 
 print(figure4)
 
-ggsave("exports/figures//figure4.png", figure4, width = 20, height = 12, unit = "cm", dpi = 300)
+ggsave("exports/figures//figure4.tiff", figure4, width = 20, height = 10, unit = "cm", dpi = 300)
 
-# Visualize networks:
+library(broom) # Essential for cleaning model outputs
+
+# Run the models
+lm_results <- pigment_df_long %>%
+  # Group by the factors you want to split the models by
+  group_by(treatment, comparison) %>%
+  nest() %>%
+  # Run the linear model on each nested group
+  # Formula: y ~ x  (Treatment Coupling ~ Control Coupling)
+  mutate(model = map(data, ~lm(pig_coup ~ `N 0`, data = .x))) %>%
+  # Extract Coefficients (Slope & Intercept)
+  mutate(tidied = map(model, tidy),
+         glanced = map(model, glance))
+
+# Create a Clean Summary Table
+tableS1 <- lm_results %>%
+  unnest(tidied) %>%
+  filter(term == "`N 0`") %>% #
+  select(treatment, comparison, estimate, std.error, p.value) %>%
+  # Join with R-squared values
+  left_join(
+    lm_results %>% unnest(glanced) %>% select(treatment, comparison, r.squared, adj.r.squared),
+    by = c("treatment", "comparison")) %>%
+  # rename comparison to N load:
+  rename(N_load = comparison) %>%
+  # round numeric collumns to 0.001
+  mutate(across(c(estimate, std.error, p.value, r.squared, adj.r.squared), ~ round(., 3)))
+
+# View the results
+print(tableS1)
+
+# Export as supplementary tables S1
+write.csv(tableS1, "exports/tables/TableS1.csv", row.names = FALSE)
+
+# Supplementary Figure 2: Network Plots ----
+
 library(igraph)
 library(ggraph)
 library(tidygraph)
+library(patchwork)
+library(tidyverse)
+library(cowplot)
 
+# Setup Colors
 pos <- "#2ECC71"
 neg <- "#FF4040"
 
+# Pigment shotcuts:
+pigment.shorts <- c(
+  "Neoxanthin" = "Neo",
+  "Violaxanthin" = "Vio",
+  "Antheraxanthin" = "Ant",
+  "Lutein" = "Lut",
+  "Zeaxanthin" = "Zea",
+  "Chlorophyll-b" = "Chl-b",
+  "Chlorophyll-a" = "Chl-a",
+  "β-Carotene" = "β-Car")
+
+theme.net <- theme(
+  panel.grid.major = element_blank(),
+  panel.grid.minor = element_blank(),
+  plot.title = element_text(size = 12, hjust = 0.5),
+  legend.position = "none",
+  axis.text = element_blank(),
+  axis.title = element_blank(),
+  plot.margin = margin(10, 10, 10, 10),
+  panel.border = element_rect(color = "black", fill = NA, size = 0.5)
+)
+
+# Define a fixed order for pigments so they appear in the same spot in the circle every time
+fixed_pigment_order <- sort(unique(pigment_df$pigment))
+
+# Process network data:
+net_tidy_list <- list()
 muestreo_un <- unique(paste(pigment_df$treatment, pigment_df$N, sep = "_"))
 
-net_tidy_list <- list()
-
-# Loop through each link and edge df
 for (trt_load in muestreo_un) {
   
-  # Extract metadata
-  muestreo <- strsplit(trt_load, "_")[[1]]
-  treatment <- factor(muestreo[1])
-  N <- factor(muestreo[2])
+  # Metadata
+  parts <- strsplit(trt_load, "_")[[1]]
+  curr_treatment <- parts[1]
+  curr_N <- parts[2]
   
-  # Retrieve nodes and edges from the results
-  nodes <- results_list[[trt_load]]$nodes %>%
-    as.data.frame() %>%
-    mutate(treatment = as.character(treatment), 
-           N = as.character(N)) %>%
-    left_join(pigment_df, by = c("treatment", "N", "pigment"))
-
-  edges_df <- edges_list[[trt_load]] 
+  # --- STEP A: Prepare Nodes & Edges ---
+  current_meta <- pigment_df %>%
+    filter(
+      as.character(treatment) == as.character(curr_treatment),
+      as.character(N) == as.character(curr_N)
+    ) %>%
+    select(pigment, coup_sig, treatment, N) %>%  # Keep only the pigment name and the significance column
+    distinct() # ensure one row per pigment
   
-  # Debugging check for edge_alpha
-  print(edges_df)
+  # PREPARE NODES
+  nodes_raw <- results_list[[trt_load]]$nodes %>%
+    as.data.frame() 
   
-  # Create tbl_graph for significant edges
-  net_tidy <- tbl_graph(nodes = nodes, edges = edges_df, directed = FALSE) %>%
+  # JOIN
+  # Now we only join by "pigment", because we already filtered treatment/N manually
+  nodes_annotated <- nodes_raw %>%
+    left_join(current_meta, by = "pigment") %>%
+    mutate(
+      # Assign Loop Variables manually
+      treatment = curr_treatment,
+      N = curr_N,
+      
+      # Create Labels
+      pigment_label = pigment.shorts[as.character(pigment)],
+      
+      # Create Color Logic
+      node_fill_color = case_when(
+        coup_sig == "sig" ~ "#1f78b4",       # Significant -> Blue
+        TRUE ~ "gray90"                      # Not Significant -> Gray
+      )
+    )
+  
+  # Get edges
+  edges_df <- edges_list[[trt_load]]
+  
+  # Create Graph Object to calculate topology metrics
+  temp_graph <- tbl_graph(nodes = nodes_annotated, edges = edges_df, directed = FALSE)
+  
+  # --- STEP B: Enhance Graph Data ---
+  net_tidy <- temp_graph %>%
     activate(nodes) %>%
-    mutate(N = N, treatment = treatment,
-           node_fill_color = ifelse(coup_sig == "sig", "#1f78b4", "gray")) %>% # Node color
+    mutate(
+      # 1. Keep the original full name
+      pigment_full = pigment, 
+      # 2. New label
+      pigment_label = pigment.shorts[as.character(pigment)],
+      # Color logic
+      treatment = curr_treatment,
+      N = curr_N,
+      node_fill_color = ifelse(coup_sig == "sig", "#1f78b4", "gray90")
+    ) %>%
+    arrange(pigment) %>% # Sort nodes so they plot in order
     activate(edges) %>%
-      mutate(sign_cor = if_else(
-        weight > 0, "pos", "neg"),
-        edge_color = ifelse(sign_cor == "pos", pos, neg),
-        edge_alpha = if_else(sig_cor == "sig", 0.8, 0.3),  # Transparency based on significance
-        weight = abs(weight))
+    mutate(
+      sign_cor = if_else(weight > 0, "pos", "neg"),
+      edge_color = ifelse(sign_cor == "pos", pos, neg),
+      # Make non-significant edges faint, significant ones solid
+      edge_alpha_val = if_else(sig_cor == "sig", 1, 0.5), 
+      edge_linetype = if_else(sig_cor == "sig", "solid", "dotted"),
+      weight = abs(weight)
+    )
   
-  # Save in the list
   net_tidy_list[[trt_load]] <- net_tidy
 }
 
+# Define the Layout (Linear Layout used to make a Circle)
+# We use a linear layout sorted by our factor, then wrap it into a circle in coords
+
 network_plots <- list()
 
-# Visualize networks
 for (trt_load in names(net_tidy_list)) {
   
-  # Extract the tidygraph object for the current treatment and load
   net_tidy <- net_tidy_list[[trt_load]]
   
-  # Extract metadata
-  muestreo <- strsplit(trt_load, "_")[[1]]
-  Muestreo <- factor(muestreo[1])
-  N <- factor(muestreo[2])
+  # Extract Title Info
+  parts <- strsplit(trt_load, "_")[[1]]
+  plot_title <- paste(parts[1], "-", parts[2], "kg N")
   
-  # Visualize the network using ggraph
-  network_plot <- ggraph(net_tidy, layout = "circle") +  
+  # --- NETWORK ---
+  p <- ggraph(net_tidy, layout = 'linear', circular = TRUE) + 
+    
+    # --- EDGES ---
     geom_edge_arc(
-      aes(edge_color = sign_cor, edge_alpha = I(edge_alpha), edge_width = weight),
-      strength = 0.2) +
+      aes(color = sign_cor,               # Set color based on the sign
+          alpha = I(edge_alpha_val),      # Set transparency based on significance
+          width = weight,                 # Edge width by absolute correlation
+          linetype = I(edge_linetype))) + 
+    
     scale_edge_width_continuous(
-      range = c(0.2, 2.5), limits = c(0, 1), name = "Correlation Weight") +
+      range = c(0.2, 2), 
+      limits = c(0, 1), 
+      breaks = c(0.25, 0.5, 0.75, 1),
+      name = "Correlation"
+    ) +
+    
     scale_edge_color_manual(
-      values = c("pos" = pos, "neg" = neg),
-      name = "Correlation Sign",
-      labels = c("Negative", "Positive")) +
+      values = c("pos" = pos, "neg" = neg), 
+      labels = c("Negative", "Positive"),
+      name = "Sign", guide = "none"
+    ) +
+    
+    # --- NODES ---
     geom_node_point(
-      aes(fill = I(node_fill_color)), shape = 21, color = "white", stroke = 1.2, size = 2.5) +
+      aes(fill = I(node_fill_color), size = 0.5), # Fill based on pigment coupling sig.
+      shape = 21, color = "white", stroke = 1) +
+    
+    # --- LABELS ---
+    # Push labels slightly outward
     geom_node_text(
-      aes(label = pigment), repel = TRUE, size = 3, fontface = "bold", color = "darkgrey") +
-    theme_void() +
-    labs(title = paste(Muestreo, N)) +
-    coord_fixed() +
-    theme(
-      plot.title = element_text(size = 14, hjust = 0.5),
-      plot.title.position = "plot")
+      aes(
+        label = pigment_label,
+        # Dynamic Nudge: Pushes the "ideal" label position outward
+        nudge_x = x * 1.2, 
+        nudge_y = y * 1.2
+      ),
+      
+      # Keep Repel ON to fix overlaps
+      repel = TRUE,
+      
+      # keep it clean
+      segment.color = NA,
+      box.padding = 0.1,
+      point.padding = 0.1, 
+      force = 1,
+      
+      size = 3, 
+      color = "black"
+    ) +
+    
+    # LEGEND
+    guides(
+      edge_color = "none",
+      edge_width = "none",
+      edge_alpha = "none",
+      fill = "none",
+      size = "none",
+      color = "none"
+    ) +
+    
+    # --- THEME ---
+    theme_minimal() +
+    coord_fixed(clip = "off", 
+                xlim = c(-1.1, 1.1),
+                ylim = c(-1.1, 1.1)) +
+    labs(title = plot_title) +
+    theme.net
   
-  # Store the plot in the list
-  network_plots[[trt_load]] <- network_plot
+  network_plots[[trt_load]] <- p
+
 }
 
-# Combine all plots into a grid layout
-combined_network_grid <- wrap_plots(network_plots, ncol = 4) +
-  plot_annotation(theme = theme(legend.position = "right")) +
-  plot_layout(guides = "collect")
 
-# Display the grid
-combined_network_grid
-
-# Export
-ggsave(
-  "exports/figures//figure2.jpeg", 
-  plot = combined_network_grid, 
-  width = 16,
-  height = 12,
-  dpi = 300
+# Arrange Logically
+desired_order <- c(
+  "Drought_0", "Drought_10", "Drought_20", "Drought_50",
+  "Recovery_0", "Recovery_10", "Recovery_20", "Recovery_50"
 )
+
+# Filter/Sort 
+ordered_plots <- network_plots[desired_order[desired_order %in% names(network_plots)]]
+
+
+# Define Column Titles
+col_titles <- c("0 kg·N·ha-1·yr-1",
+                "10 kg·N·ha-1·yr-1",
+                "20 kg·N·ha-1·yr-1",
+                "50 kg·N·ha-1·yr-1")
+
+# Separate list into Top (Drought) and Bottom (Recovery) rows
+row1_plots <- ordered_plots[1:4]
+row2_plots <- ordered_plots[5:8]
+
+# Loop through TOP ROW to add titles
+for(i in 1:4) {
+  row1_plots[[i]] <- row1_plots[[i]] + 
+    ggtitle(col_titles[i]) + 
+    theme(
+      plot.title = element_text(hjust = 0.5, size = 14, margin = margin(b=10)),
+      plot.margin = margin(5, 5, 5, 5) 
+    )
+}
+
+# Loop through BOTTOM ROW to ensure NO titles
+for(i in 1:4) {
+  row2_plots[[i]] <- row2_plots[[i]] + 
+    labs(title = NULL) + # Remove title if it exists
+    theme(plot.margin = margin(5, 5, 5, 5))
+}
+
+# Function to create a vertical label
+create_row_label <- function(label_text) {
+  ggplot() + 
+    annotate("text", 
+             x = 1, 
+             y = 0.5, 
+             label = label_text, 
+             angle = 90, 
+             size = 6, 
+             color = "black",
+             hjust = 0.5) +
+    theme_void() +
+    # Fix the limits so x=1 is exactly the edge
+    coord_cartesian(xlim = c(0, 1), ylim = c(0, 1), clip = "off") + 
+    # Negative Right Margin pulls the next plot closer
+    theme(plot.margin = margin(t = 0, r = 14, b = 0, l = 0))
+}
+
+label_drought <- create_row_label("Drought")
+label_recov   <- create_row_label("Recovery")
+
+# Build Row 1 
+# widths = c(0.5, 15) makes the label column much narrower
+row1_combined <- label_drought + wrap_plots(row1_plots, nrow = 1) + 
+  plot_layout(widths = c(0.5, 30)) 
+
+# Build Row 2 
+row2_combined <- label_recov + wrap_plots(row2_plots, nrow = 1) + 
+  plot_layout(widths = c(0.5, 30))
+
+figure2 <- (row1_combined / row2_combined) +
+  plot_layout(guides = "collect") 
+
+# View and Save
+print(figure2)
+
+ggsave("exports/figures/figure2.tiff", figure2, width = 16, height = 10)
+ 
