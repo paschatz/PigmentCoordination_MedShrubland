@@ -44,6 +44,7 @@ article_id <- 30636824
 # Fetch metadata
 res <- request(paste0("https://api.figshare.com/v2/articles/", article_id)) %>%
   req_perform()
+
 meta <- res %>%
   resp_body_json(simplifyVector = TRUE)
 
@@ -88,10 +89,10 @@ theme_pub <- theme_minimal() +
     strip.text = element_text(size = 12),
     legend.position = "bottom",
     legend.text = element_text(size = 10),
-    panel.border = element_rect(color = "black", fill = NA, linewidth = 1),
+    panel.border = element_rect(color = "black", fill = NA, linewidth = 0.5),
     panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank()
-  )
+    panel.grid.minor = element_blank(),
+    axis.ticks = element_line(color = "black", size = 0.2))
 
 # Define Labeller for Facets
 n_labels <- c(
@@ -193,18 +194,18 @@ data_mean <- data_long %>%
 data_mean$pigment <- fct_relevel(data_mean$pigment, 
                                "Anth", "β-Car", "Chl-a", "Chl-b", "Lut", "Neo", "Vio", "Zea", "AZ", "VAZ", "AZ/VAZ")
 
-# Figure 1: Pigment Concentrations by Nitrogen ------------------------------
+# Figure S1: Pigment Concentrations by Nitrogen ------------------------------
 # Filter out ratio metrics for the main plot
-fig1_data <- data_mean %>%
+figS1_data <- data_mean %>%
   filter(!pigment %in% c("AZ", "VAZ"))
 
-figureS1 <- ggplot(fig1_data, aes(x = pigment, y = mean_conc, fill = N)) +
+figureS1 <- ggplot(figS1_data, aes(x = pigment, y = mean_conc, fill = N)) +
   geom_bar(stat = "identity", position = "dodge", color = "black") +
   geom_errorbar(aes(ymin = mean_conc - se_conc, 
                     ymax = mean_conc + se_conc), 
                 width = 0.2, position = position_dodge(0.9)) +
   scale_fill_manual(values = col_palette_N) +
-  geom_vline(xintercept = as.numeric(which(levels(fig1_data$pigment) == "Zea")) + 
+  geom_vline(xintercept = as.numeric(which(levels(figS1_data$pigment) == "Zea")) + 
                0.5, linetype = "dashed", color = "black", alpha = 0.5) +
   facet_wrap(~ treatment, nrow = 2) +
   labs(x = "Pigment",
@@ -220,7 +221,8 @@ figureS1 <- ggplot(fig1_data, aes(x = pigment, y = mean_conc, fill = N)) +
 figureS1
 
 # Export Figure S1:
-ggsave("exports/figures//figureS1.jpg", plot = figureS1, width = 10, height = 12, dpi = 300)
+ggsave("exports/figures//figureS1.tiff", plot = figureS1, width = 10, height = 12, dpi = 1200)
+ggsave("exports/figures//figureS1.pdf", plot = figureS1, width = 10, height = 12, dpi = 1200, device = cairo_pdf)
 
 # Supplementary Figure S2: Pigment Ratios by Nitrogen and Treatment ------------
 figureS2.dat <- pigment_ratios %>%
