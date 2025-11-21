@@ -12,14 +12,28 @@
 #   Manuscript DOI: [10.XXXX/XXXXX]                                            #
 #                                                                              #
 #   DESCRIPTION:                                                               #
-#   This script reproduces the statistical analysis (ANOVA/mixed models) and   #
-#   figures for the manuscript listed above.                                   #
-#                                                                              #
-#   DATA SOURCE:                                                               #
-#   Data is retrieved automatically via the Figshare API (ID: 30636824).       #
-#   No manual download is required.                                            #
+#   This script reproduces the full analytical workflow for the manuscript     #
+#   listed above. Specifically, it:                                            #
+#    - Imports the curated pigment dataset directly from Figshare via the      #
+#      Figshare API.                                                           #
+#    - Derives pigment ratios relative to total chlorophyll (a + b).           #
+#    - Prepares the data structure (factors, interaction terms) required for   #
+#      mixed-effects modelling.                                                #
+#    - Fits linear mixed-effects models (ANOVA) for each pigment, summarises   #
+#      fixed effects, and exports the resulting ANOVA table (Table 1).         #
+#    - Reshapes the data to long format for visualisation and computes means   #
+#      and standard errors.                                                    #
+#    - Produces Figures 2, 4, 5 and Supplementary Figures S1–S3, including     #
+#      bar plots, pigment ratio plots, and coupling-related plots.             #
+#    - Quantifies pigment coupling (mean absolute Spearman correlation)        #
+#      using EcoCoupleR.                                                      #
+#    - Constructs a permutation-based null model (999 permutations) for        #
+#      coupling and pigment-level coupling, and derives confidence envelopes.  #
+#    - Exports supplementary regression results (Table S1) and network-related #
+#      objects for subsequent network visualisation.                           #
 #                                                                              #
 ################################################################################
+
 # Clean environment
 rm(list = ls())
 
@@ -35,26 +49,30 @@ library(patchwork)
 library(httr2)
 library(jsonlite)
 library(ggpubr)
+library(broom)
 
 # Data Import (via Figshare API) --------------------------------------------
 
-# Define Article ID in Figshare:
+# Define Figshare article ID containing the pigment dataset
 article_id <- 30636824
 
-# Fetch metadata
+# Request metadata for the specified Figshare article
 res <- request(paste0("https://api.figshare.com/v2/articles/", article_id)) %>%
   req_perform()
 
+# Parse the JSON response into an R list / data structure
 meta <- res %>%
   resp_body_json(simplifyVector = TRUE)
 
-# Select the specific file (First file in the record)
-# Note: If the repo has multiple files, verify index [1] is always the dataset
+# Select the specific file (first file associated with the record).
 file_url <- meta$files$download_url[1] 
 data_tidy <- read_csv(file_url, show_col_types = FALSE)
 
 # Data Calculation and Transformation ---------------------------------------
-# Calculate Pigment Ratios relative to Total Chlorophyll (a + b)
+
+# Calculate pigment ratios relative to total chlorophyll (Chl a + Chl b).
+# These ratios express each pigment on a chlorophyll basis, capturing
+# shifts in pigment composition independent of absolute chlorophyll content.
 pigment_ratios <- data_tidy %>%
   mutate(Neo = (Neoxanthin / (`Chlorophyll-a` + `Chlorophyll-b`)),
          Vio = (Violaxanthin / (`Chlorophyll-a` + `Chlorophyll-b`)),
@@ -64,23 +82,26 @@ pigment_ratios <- data_tidy %>%
          'β-Car' = (`β-Carotene` / (`Chlorophyll-a` / `Chlorophyll-b`)),
          VAZ = (VAZ / (`Chlorophyll-a` + `Chlorophyll-b`)))
 
-# Prepare data for Statistics (Factors and Interactions)
+# Prepare data for statistical analyses:
+# - Convert N, treatment, and block to factors.
+# - Create an interaction factor (Nblock) for specifying the random structure.
+# - Reorder columns to place key design variables first.
 stats_data <- pigment_ratios %>%
   mutate(
     N = as.factor(N),
     treatment = as.factor(treatment),
     block = as.factor(block),
-    # Interaction factor for random effects
+    # Interaction factor used in the random-effects structure (Nblock / block)
     Nblock = factor(paste(N, block, sep = "."))) %>%
   as.data.frame() %>%
   select(trt_N, Nblock, treatment, N, block, everything()) %>%
   select(-AZ)
 
-# Define Colors
+# Define colour palettes for N levels and treatments
 col_palette_N <- c("#90d743", "#6ece58", "#4ec36b", "#25ab82")
 col_palette_treat <- c("Drought" = "#A6611A", "Recovery" = "#018571")
 
-# Define a Unified Theme
+# Define a unified publication-style theme to be reused across figures
 theme_pub <- theme_minimal() +
   theme(
     text = element_text(color = "black"),
@@ -90,11 +111,12 @@ theme_pub <- theme_minimal() +
     legend.position = "bottom",
     legend.text = element_text(size = 10),
     panel.border = element_rect(color = "black", fill = NA, linewidth = 0.5),
+    axis.line = element_blank(),
     panel.grid.major = element_blank(),
     panel.grid.minor = element_blank(),
     axis.ticks = element_line(color = "black", size = 0.2))
 
-# Define Labeller for Facets
+# Define labeller for N levels used in facets (Figures 2 and S2)
 n_labels <- c(
   "0"  = "0 kg·N·ha-1·yr-1",
   "10" = "10 kg·N·ha-1·yr-1",
@@ -103,23 +125,25 @@ n_labels <- c(
 
 # Statistical Analysis (Mixed Models) ---------------------------------------
 
-# Define the column indices for the pigments
+# Define the column indices corresponding to pigment variables
+# (to be analysed with mixed models).
 target_cols <- 6:21 
 
-# Initialize list
+# Initialize list to store ANOVA tables per pigment
 anova_results_list <- list()
 
-# Loop through indices
+# Loop over pigment columns and fit a mixed model for each pigment.
+# Fixed effects: N, treatment, and their interaction; response is log-transformed.
+# Random effects: intercepts nested as 1 | Nblock / block.
 for(i in target_cols) {
   
-  # Get the actual name of the column (for saving results)
+  # Retrieve the column name (pigment) for labelling results
   col_name <- names(stats_data)[i]
   
-  # Assign data to a temporary column
+  # Assign current pigment to a temporary column used in the model
   stats_data$Y_temp <- stats_data[, i]
   
-  # Run Model
-  # We model 'Y_temp', but save the result under 'col_name'
+  # Fit the linear mixed-effects model for the current pigment
   tryCatch({
     model <- nlme::lme(
       fixed = log(Y_temp) ~ N * treatment,
@@ -128,7 +152,7 @@ for(i in target_cols) {
       na.action = na.omit
     )
     
-    # Save result
+    # Store the ANOVA table in the list using the pigment name as key
     anova_results_list[[col_name]] <- anova(model)
     
   }, error = function(e) {
@@ -137,36 +161,43 @@ for(i in target_cols) {
   })
 }
 
-# Bind list to wide dataframe
+# Combine all ANOVA tables into a single wide data frame
 table1 <- do.call("cbind", anova_results_list) %>% 
   as.data.frame()
 
-# Identify DF Columns
-# Find indices of all columns ending in .numDF or .denDF
+# Identify DF columns:
+# - numDF: numerator degrees of freedom
+# - denDF: denominator degrees of freedom
 idx_num <- grep("\\.numDF$", names(table1))
 idx_den <- grep("\\.denDF$", names(table1))
 
-# We keep the first instance of each, and list the rest for removal
+# For DF columns, keep only the first instance of numDF and denDF.
+# Remaining duplicated DF columns are removed.
 cols_to_remove <- c(idx_num[-1], idx_den[-1])
 
-# Process Table
+# Process and tidy the ANOVA table:
 table1_final <- table1 %>%
-  # Remove the redundant DF columns 
+  # Remove redundant DF columns
   select(-all_of(cols_to_remove)) %>%
-  # Rename the remaining first DF columns to generic names
+  # Rename remaining DF columns to generic names
   rename(
     numDF = all_of(idx_num[1]),
     denDF = all_of(idx_den[1])) %>%
-  # Remove Intercept rows
+  # Remove rows corresponding to the intercept term
   filter(row.names(.) != "(Intercept)") %>%
-  # Round numeric values:
+  # Format numeric values with two decimal places for reporting
   mutate(across(where(is.numeric), ~ sprintf("%.2f", .x)))
 
-# Export Table 1:
+print(table1_final)
+
+# Export ANOVA results (Table 1)
 write.csv(table1,"exports/tables/Table1.csv")
 
 # Data Preparation ----------------------------------------------------------
+
 # Create the master LONG dataframe¨
+# This step reshapes the pigment concentration data from wide to long format,
+# keeping treatment, N, and block as grouping variables.
 data_long <- data_tidy %>%
   pivot_longer(cols = c(-trt_N, -treatment, -N, -block), 
                names_to = "pigment", values_to = "concentration") %>%
@@ -175,11 +206,13 @@ data_long <- data_tidy %>%
          treatment = factor(treatment),
          pigment = as.factor(pigment))
 
+# Compute mean concentration and standard error per pigment × treatment × N
+# and recode pigment names to shorter labels used in figures.
 data_mean <- data_long %>%
   group_by(treatment, N, pigment) %>%
   summarise(mean_conc = mean(concentration, na.rm = TRUE),
             se_conc = sd(concentration, na.rm = TRUE) / sqrt(n())) %>%
-  # recode pigment names
+  # Recode pigment names
   mutate(pigment = fct_recode(pigment,
                               "Neo" = "Neoxanthin",
                               "Vio" = "Violaxanthin",
@@ -190,12 +223,13 @@ data_mean <- data_long %>%
                               "Chl-a" = "Chlorophyll-a",
                               "β-Car" = "β-Carotene"))
 
-# Consistent pigment order
+# Enforce a consistent pigment ordering across all figures
 data_mean$pigment <- fct_relevel(data_mean$pigment, 
-                               "Anth", "β-Car", "Chl-a", "Chl-b", "Lut", "Neo", "Vio", "Zea", "AZ", "VAZ", "AZ/VAZ")
+                                 "Anth", "β-Car", "Chl-a", "Chl-b", "Lut", "Neo", "Vio", "Zea", "AZ", "VAZ", "AZ/VAZ")
 
 # Figure S1: Pigment Concentrations by Nitrogen ------------------------------
-# Filter out ratio metrics for the main plot
+
+# Filter out ratio-based variables (AZ, VAZ) for the main pigment concentration plot
 figS1_data <- data_mean %>%
   filter(!pigment %in% c("AZ", "VAZ"))
 
@@ -220,11 +254,13 @@ figureS1 <- ggplot(figS1_data, aes(x = pigment, y = mean_conc, fill = N)) +
 
 figureS1
 
-# Export Figure S1:
-ggsave("exports/figures//figureS1.tiff", plot = figureS1, width = 10, height = 12, dpi = 1200)
-ggsave("exports/figures//figureS1.pdf", plot = figureS1, width = 10, height = 12, dpi = 1200, device = cairo_pdf)
+# Export Figure S1 (Supplementary)
+ggsave("exports/figures//FigureS1.tiff", plot = figureS1, width = 10, height = 12, dpi = 1200)
+ggsave("exports/figures//FigureS1.pdf", plot = figureS1, width = 10, height = 12, dpi = 1200, device = cairo_pdf)
 
-# Supplementary Figure S2: Pigment Ratios by Nitrogen and Treatment ------------
+# Supplementary Figure S2: Pigment Ratios by Nitrogen and Treatment ----------
+
+# Prepare data for pigment ratios (relative to total chlorophyll).
 figureS2.dat <- pigment_ratios %>%
   select(trt_N, treatment, N, block, Neo, Vio, Ant, Lut, Zea, 'β-Car', VAZ) %>%
   pivot_longer(cols = c(-trt_N, -treatment, -N, -block), 
@@ -252,36 +288,42 @@ figureS2 <- ggplot(figureS2.dat, aes(x = pigment, y = mean_conc, fill = treatmen
 
 figureS2
 
-# Export Figure S2:
-ggsave("exports/figures//figureS2.jpg", plot = figureS2, width = 10, height = 12, dpi = 300)
+# Export Figure S2 (Supplementary)
+ggsave("exports/figures//FigureS2.tiff", plot = figureS2, width = 10, height = 12, dpi = 1200)
+ggsave("exports/figures//FigureS2.pdf", plot = figureS2, width = 10, height = 12, dpi = 1200, device = cairo_pdf)
 
-# Figure 1: --------------------------------------------------------------------
+# Figure 2: --------------------------------------------------------------------
 # Data preparation:
+# - Exclude AZ and VAZ (ratio variables)
+# - Ensure N is a factor
 subset_long <- data_long %>%
   filter(pigment != "AZ", pigment != "VAZ") %>%
   mutate(N = factor(N))
 
-# Create an empty data frame to store results
+# Create an empty data frame to store significance results of paired t-tests
 sig_results <- data.frame()
 
-# Get all unique combinations of pigment and N
+# Identify all unique pigment × N combinations
 combinations <- unique(subset_long[, c("pigment", "N")])
 
-# Loop over each combination
+# Loop over each pigment × N combination:
+# - Reshape data to wide format by treatment (Drought vs Recovery)
+# - Perform paired t-tests (within blocks) where both treatments are present
+# - Convert p-values to significance codes (*, **, ***)
 for (i in 1:nrow(combinations)) {
   pigment_i <- combinations$pigment[i]
   N_i <- combinations$N[i]
   
-  # Subset data for that pigment × N
+  # Subset data for the current pigment × N combination
   subset_df <- subset_long %>%
     filter(pigment == pigment_i, N == N_i)
   
-  # Pivot to wide for paired comparison
+  # Pivot to wide format for paired comparison by treatment
   wide_df <- subset_df %>%
     select(block, treatment, concentration) %>%
     pivot_wider(names_from = treatment, values_from = concentration)
   
-  # Check if both treatments are present
+  # Only perform the test if both treatments are present
   if (all(c("Drought", "Recovery") %in% colnames(wide_df))) {
     test <- t.test(wide_df$Drought, wide_df$Recovery, paired = TRUE)
     pval <- test$p.value
@@ -289,7 +331,7 @@ for (i in 1:nrow(combinations)) {
     pval <- NA
   }
   
-  # Convert p-value to asterisk
+  # Convert p-value to significance asterisks
   sig <- if (is.na(pval)) {
     ""
   } else if (pval <= 0.001) {
@@ -302,7 +344,7 @@ for (i in 1:nrow(combinations)) {
     ""
   }
   
-  # Add result to output data frame
+  # Append result to output data frame
   sig_results <- rbind(sig_results, data.frame(
     pigment = pigment_i,
     N = N_i,
@@ -311,30 +353,31 @@ for (i in 1:nrow(combinations)) {
   ))
 }
 
-# Calculate y-position above the tallest bar for each pigment × N
+# Determine y-position for the significance labels:
+# - For each pigment × N, place the label slightly above the tallest bar.
 y_pos_df <- subset_long %>%
   group_by(pigment, N) %>%
   summarise(y_pos = max(concentration, na.rm = TRUE) + 0.03, .groups = "drop") %>%
-  # set manually the y-position for AZ/VAZ
+  # Set manually the y-position for Chlorophyll-b (to improve spacing)
   mutate(y_pos = ifelse(pigment == "Chlorophyll-b", max(y_pos) - 0.4, y_pos))
 
-# Merge significance and y-position
+# Merge significance codes with y-positions and keep only significant comparisons
 sig_df2 <- sig_results %>%
   left_join(y_pos_df, by = c("pigment", "N")) %>%
   filter(sig != "")
 
-# Re-code pigment names to match plot
+# Recode pigment names to match plotting labels
 sig_df2$pigment <- fct_recode(sig_df2$pigment,
-                             "Neo" = "Neoxanthin", "Vio" = "Violaxanthin", "Anth" = "Antheraxanthin",
-                             "Lut" = "Lutein", "Zea" = "Zeaxanthin", "Chl-b" = "Chlorophyll-b",
-                             "Chl-a" = "Chlorophyll-a", "β-Car" = "β-Carotene")
+                              "Neo" = "Neoxanthin", "Vio" = "Violaxanthin", "Anth" = "Antheraxanthin",
+                              "Lut" = "Lutein", "Zea" = "Zeaxanthin", "Chl-b" = "Chlorophyll-b",
+                              "Chl-a" = "Chlorophyll-a", "β-Car" = "β-Carotene")
 
-# Ensure pigment order is consistent
+# Ensure pigment order is consistent with other figures
 sig_df2$pigment <- fct_relevel(sig_df2$pigment, 
-                              "Anth", "β-Car", "Chl-a", "Chl-b", "Lut", "Neo", "Vio", "Zea", "AZ", "VAZ", "AZ/VAZ")
+                               "Anth", "β-Car", "Chl-a", "Chl-b", "Lut", "Neo", "Vio", "Zea", "AZ", "VAZ", "AZ/VAZ")
 
 
-figure1 <- ggplot(data_mean %>% filter(!pigment %in% c("AZ", "VAZ")),
+figure2 <- ggplot(data_mean %>% filter(!pigment %in% c("AZ", "VAZ")),
                   aes(x = pigment, y = mean_conc, fill = treatment)) +
   geom_bar(aes(group = treatment), stat = "identity", position = "dodge", color = "black") +
   geom_errorbar(aes(ymin = mean_conc - se_conc, 
@@ -357,110 +400,110 @@ figure1 <- ggplot(data_mean %>% filter(!pigment %in% c("AZ", "VAZ")),
   theme_pubclean() +
   theme_pub
 
-figure1
+figure2
 
-ggsave("exports/figures//Figure1.jpg", plot = figure1, width = 10, height = 8, dpi = 300)
+# Export Figure 2
+ggsave("exports/figures//Figure2.tiff", plot = figure2, width = 10, height = 8, dpi = 1200)
+ggsave("exports/figures//Figure2.pdf", plot = figure2, width = 10, height = 8, dpi = 1200, device = cairo_pdf)
 
 ################################################################################
 # Calculate coupling ----
 ################################################################################
-# Function to create nodes from data
+
+# Function to create node table from a data frame of pigment variables
 create_nodes <- function(data) {
   data %>%
-    # Extract unique col names (pigment names)
+    # Extract unique column names (pigment names)
     colnames() %>%
     as.data.frame() %>%
-    # Rename the first column to pigment
+    # Rename the first column to "pigment"
     rename(pigment = 1) %>%
     mutate(id = row_number()) %>%
     select(id, pigment)
 }
 
 # Data input for coupling estimation:
+# - metadata: treatment, N, block, trt_N
+# - data: pigment concentration matrix (used to construct correlation networks)
 metadata <- data_tidy %>%
   select(trt_N, treatment, N, block)
 
 data <- data_tidy %>%
   select(-treatment, -N, -block)
 
-# Initialize lists to store results:
+# Initialize lists to store coupling, network edges, and links per treatment × N
 results_list <- list()
 edges_list <- list()
 links_list <- list()
 
-# Loop through unique trt_N values:
+# Loop through unique trt_N values (treatment × N combinations):
 for (i in unique(data$trt_N)) {
   
-  # Filter data for the current trt_N and select only pigments:
+  # Filter data for the current trt_N and retain only pigment columns
   data_filtered <- data %>% 
     filter(trt_N == i) %>%
     select(-trt_N, -AZ, -VAZ, -`AZ/VAZ`)
   
   nodes <- create_nodes(data_filtered)
   
-  # Calculate the Spearman correlation matrix:
+  # Calculate the Spearman correlation matrix (r and p-values)
   cor_matrix <- rcorr(as.matrix(data_filtered), type = "spearman")
   
-  # Calculate ecological coupling for all correlations:
+  # Calculate ecological coupling (mean absolute correlation) for the full network
   coupling_per_plot <- eco_coupling(cor_matrix$r, data_str = "matrix")
   
-  # Extract and process correlation matrices (r, p-values, n):
+  # Extract and process correlation matrices (r, p-values)
   cor_df_raw <- as.data.frame(cor_matrix$r)
   cor_p <- as.data.frame(cor_matrix$P)
   
-  # Remove diagonal
+  # Remove diagonal (self-correlations are not informative)
   diag(cor_df_raw) <- NA  
   
-  # Save a copy of untrimmed correlation matrix to calculate pigment coupling later:
+  # Save an untrimmed copy of the correlation matrix to compute pigment-level coupling
   cor_df_full <- cor_df_raw
   
-  # Make a deep copy of the raw correlation matrix:
+  # Work on a deep copy for connectivity calculations
   cor_df <- cor_df_raw
   
-  # Trim lower triangle of the correlation matrix:
+  # Trim lower triangle of the correlation matrix to avoid double counting
   cor_df[lower.tri(cor_df)] <- NA
   
-  # Filter significant correlations (p < 0.05):
+  # Filter significant correlations (p < 0.05)
   cor_df_sig <- cor_df
   cor_df_sig[cor_p > 0.05] <- NA
   
-  # Calculate network connectivity (ratio of significant correlations):
+  # Calculate network connectivity as the ratio of significant to total evaluated correlations
   connectivity <- sum(!is.na(cor_df_sig)) / sum(!is.na(cor_df))
   
   #### Pigment coupling:
-  # Calculate mean absolute correlation per pigment:
+  # Calculate mean absolute correlation per pigment (row-wise mean of |r|)
   pigment_coupling <- cor_df_full %>%
-    # Add a pigment column (rownames will be added as a new column)
     mutate(pigment = rownames(cor_df_full)) %>%
-    # Calculate the mean of the absolute correlations across columns, omitting NA values:
     summarise(across(-pigment, ~ mean(abs(.), na.rm = TRUE))) %>%
-    # Ensure that the output has the correct structure for pivot_longer
     bind_rows() %>%
-    # Pivot longer to reshape the data frame
     pivot_longer(cols = everything(), names_to = "pigment", values_to = "pig_coup")
   
-  # Create links and edges for every interaction:
+  # Create links and edges for every pairwise pigment interaction:
+  # - links_df: edge list with weights and significance flag
+  # - links_long: reshaped version listing pigments and associated correlations
   links_df <- cor_df %>%
     as.data.frame() %>%
     rownames_to_column("from") %>%
     pivot_longer(cols = -from, names_to = "to", values_to = "weight") %>%
     filter(!is.na(weight)) %>%
-    # take the significance from cor_df_sig:
+    # Determine whether each correlation is significant or not
     mutate(sig_cor = if_else(!is.na(cor_df_sig[cbind(from, to)]), "sig", "ns"))
   
-  # Reshape links_all by combining 'from' and 'to' into one 'sp_code' column
   links_long <- links_df %>%
     pivot_longer(
       cols = c(from, to),
-      names_to = "direction",    # Temporary column to hold 'from'/'to' labels
-      values_to = "pigment"      # Final column for pigment names
+      names_to = "direction",    
+      values_to = "pigment"      
     ) %>%
-    # Optionally remove the 'direction' column if not needed
     select(-direction) %>%
-    # Remove duplicate rows if 'weight' and 'sig' were the same in 'from' and 'to' pairs
     distinct()
   
-  # Create edges by merging with nodes and using the significance column
+  # Create edge list with numeric node IDs for network visualisation
   edges_df <- links_df %>%
     left_join(nodes, by = c("from" = "pigment")) %>%
     rename(from_id = id) %>%
@@ -469,11 +512,11 @@ for (i in unique(data$trt_N)) {
     select(from_id, to_id, weight, sig_cor) %>%
     rename(from = from_id, to = to_id)
   
-  # Store edges and links in the list
+  # Store edges and links in lists keyed by trt_N
   edges_list[[i]] <- edges_df
   links_list[[i]] <- links_df
   
-  # Store results in the list:
+  # Store all results (correlation matrices, coupling metrics, nodes) in a master list
   results_list[[i]] <- list(
     trt_N = i,
     cor_df = cor_df,
@@ -486,14 +529,14 @@ for (i in unique(data$trt_N)) {
   )
 }
 
-# Combine coupling and connectivity results:
+# Combine coupling and connectivity results into a single data frame:
 coupling <- bind_rows(lapply(results_list, function(x) {
   data.frame(trt_N = x$trt_N,
              connectivity = x$connectivity,
              coupling = x$coupling_per_plot$coupling)
 }))
 
-# Combine pigment coupling results:
+# Combine pigment-level coupling results:
 coupling_pig_df <- bind_rows(lapply(results_list, function(x) {
   data.frame(trt_N = x$trt_N, 
              pigment = x$pigment_coupling$pigment, 
@@ -504,9 +547,12 @@ coupling_pig_df <- bind_rows(lapply(results_list, function(x) {
 # NULL MODEL ----
 ################################################################################
 
+# Number of permutations for the null model
 num_permutations <- 999
 
-# Create permutations using purrr::map
+# Create permuted datasets:
+# - For each permutation, pigment values are shuffled within each trt_N
+#   (preserving marginal distributions and sample size).
 permutations <- map(1:num_permutations, ~ data %>%
                       group_by(trt_N) %>%
                       mutate_at(vars(-group_cols()), ~ sample(., replace = FALSE)) %>%
@@ -516,17 +562,17 @@ permutations <- map(1:num_permutations, ~ data %>%
 perm_results_list <- vector("list", length = num_permutations)
 coupling_pig_df_perm <- data.frame()
 
-# Loop through each permuted dataset
+# Loop through each permuted dataset and recompute coupling metrics
 for (perm_idx in seq_along(permutations)) {
   perm_data <- permutations[[perm_idx]]
   
-  # Loop through each unique trt_N
+  # Loop through each unique trt_N within the permuted dataset
   for (i in unique(perm_data$trt_N)) {
     data_filtered_perm <- perm_data %>%
       filter(trt_N == i) %>%
       select(-trt_N, -AZ, -VAZ, -`AZ/VAZ`)
     
-    # Calculate Spearman correlation matrix
+    # Calculate Spearman correlation matrix in the permuted data
     cor_matrix_perm <- rcorr(as.matrix(data_filtered_perm), type = "spearman")
     
     coupling_perm <- eco_coupling(cor_matrix_perm$r, data_str = "matrix")
@@ -538,29 +584,29 @@ for (perm_idx in seq_along(permutations)) {
     # Remove diagonal
     diag(cor_df_raw_perm) <- NA
     
-    # Save a copy for pigment coupling
+    # Save a full copy for pigment-level coupling
     cor_df_full_perm <- cor_df_raw_perm
     
-    # Trim lower triangle of the correlation matrix
+    # Trim lower triangle
     cor_df_raw_perm[lower.tri(cor_df_raw_perm)] <- NA
     
-    # Filter significant correlations (p < 0.05)
+    # Filter significant correlations
     cor_df_sig_perm <- cor_df_raw_perm
     cor_df_sig_perm[cor_p_perm > 0.05] <- NA
     
-    # Calculate connectivity (ratio of significant correlations)
+    # Calculate connectivity (ratio of significant correlations) in permuted data
     connectivity_perm <- sum(!is.na(cor_df_sig_perm)) / sum(!is.na(cor_df_raw_perm))
     
-    #### Pigment coupling
+    #### Pigment coupling (permutation)
     coupling_per_pigment_perm <- cor_df_full_perm %>%
       mutate(pigment = rownames(cor_df_full_perm)) %>%
       summarise(across(-pigment, ~ mean(abs(.), na.rm = TRUE))) %>%
       bind_rows() %>%
       pivot_longer(cols = everything(), names_to = "pigment", values_to = "pig_coup")
     
-    # Store results, including trt_N
+    # Store coupling and connectivity results for this permutation and trt_N
     perm_results_list[[perm_idx]][[i]] <- list(
-      trt_N = i,  # Store trt_N here
+      trt_N = i,  
       coupling = coupling_perm,
       connectivity_perm = connectivity_perm,
       coupling_per_pigment_perm = coupling_per_pigment_perm
@@ -568,20 +614,20 @@ for (perm_idx in seq_along(permutations)) {
   }
 }
 
-# Store coupling from permutations: 
-# Combine results into data frames
+# Store coupling from permutations:
+# - Combine permutation-level coupling and connectivity into a single data frame
 final_result_df <- bind_rows(lapply(seq_along(perm_results_list), function(perm_idx) {
   bind_rows(lapply(perm_results_list[[perm_idx]], function(x) {
     data.frame(
       permutation = perm_idx,
-      trt_N = x$trt_N,  # Include trt_N
+      trt_N = x$trt_N,  
       coupling = x$coupling,
       connectivity = x$connectivity_perm
     )
   }))
 }))
 
-# Calculate quantiles for coupling
+# Calculate null-model quantiles for coupling (per trt_N)
 final_result_df <- final_result_df %>%
   group_by(trt_N) %>%
   summarise(
@@ -589,49 +635,52 @@ final_result_df <- final_result_df %>%
     quan_coup_50.0 = quantile(coupling, probs = 0.500),
     quan_coup_95.0 = quantile(coupling, probs = 0.950))
 
-# Obtain original coupling values from coupling df:
+# Merge observed coupling values with null-model quantiles and
+# separate trt_N into treatment and N.
 coupling_df <- final_result_df %>%
   left_join(coupling, by = "trt_N")%>% 
   separate(trt_N, into = c("treatment", "N"), sep = "_")
 
 # Store pigment coupling from permutations:
-# Combine pigment coupling results into a data frame, including trt_N
+# - Combine pigment-level coupling over all permutations and trt_N
 pigment_final_df <- bind_rows(lapply(seq_along(perm_results_list), function(perm_idx) {
   bind_rows(lapply(perm_results_list[[perm_idx]], function(x) {
     data.frame(
       permutation = perm_idx,
-      trt_N = x$trt_N,  # Include trt_N
+      trt_N = x$trt_N,  
       pigment = x$coupling_per_pigment_perm$pigment,
       pig_coup = x$coupling_per_pigment_perm$pig_coup
     )
   }))
 }))
 
-# Calculate quantiles for pigment coupling
-pigment_final_df <- pigment_final_df %>%
+# Calculate null-model quantiles for pigment-level coupling
+pigment_final_df.2 <- pigment_final_df %>%
   group_by(pigment, trt_N) %>%
   summarise(
     quan_coup_5.0 = quantile(pig_coup, probs = 0.050),
     quan_coup_50.0 = quantile(pig_coup, probs = 0.500),
     quan_coup_95.0 = quantile(pig_coup, probs = 0.950)) 
 
-# Obtain original pigment coupling values from coupling df:
-pigment_df <- pigment_final_df %>%
+# Obtain observed pigment coupling values and compare with null envelopes:
+# - Combine observed pig_coup with permutation quantiles
+# - Split trt_N into treatment and N
+# - Derive a significance flag (coup_sig) indicating whether observed coupling
+#   lies outside the 5–95% null interval.
+pigment_df <- pigment_final_df.2 %>%
   left_join(coupling_pig_df, by = c("trt_N", "pigment")) %>%
-  # Split trt_N into treatment and N
   separate(trt_N, into = c("treatment", "N"), sep = "_") %>%
-  # order
   arrange(treatment, N, pigment) %>%
-  # create a significance variable
   mutate(coup_sig = if_else(
     pig_coup < quan_coup_5.0 | pig_coup > quan_coup_95.0,
     "sig",
     "ns"
   ))
 
-# Figure 3 ----
-# Visualize:
-figure3 <- ggplot(coupling_df, aes(x = N, y = coupling, color = treatment, group = treatment, fill = treatment)) +
+# Figure 4 ----
+# Visualisation of pigment coupling (observed values and null
+# envelopes) across N levels for drought and recovery treatments.
+figure4 <- ggplot(coupling_df, aes(x = N, y = coupling, color = treatment, group = treatment, fill = treatment)) +
   geom_line(size = 0.6, show.legend = FALSE, linewidth = 0.6, alpha = 1) +
   geom_ribbon(aes(ymin = quan_coup_5.0, ymax = quan_coup_95.0), alpha = 0.3, linewidth = 0.8,
               show.legend = FALSE, linetype = 0) +
@@ -648,7 +697,7 @@ figure3 <- ggplot(coupling_df, aes(x = N, y = coupling, color = treatment, group
   theme_pubclean() +
   theme_pub +
   theme(panel.spacing = unit(0.5, "lines")) +
-  # Add text annotations
+  # Text annotations to help interpret coupling gradients
   annotate("text", x = 2.25, y = 0.5, color = "antiquewhite4",
            label = "Coupled", size = 2, hjust = 0) +
   annotate("text", x = 2.2, y = 0.375, color = "antiquewhite4",
@@ -659,14 +708,17 @@ figure3 <- ggplot(coupling_df, aes(x = N, y = coupling, color = treatment, group
         axis.title.y = element_text(colour = "black", size = 8),
         axis.title.x = element_text(colour = "black", size = 7),
         axis.text = element_text(colour = "black", size = 8),
-        strip.text = element_text(colour = "black", size = 8))
-figure3
+        strip.text = element_text(colour = "black", size = 8),
+        panel.border = element_rect(color = "black", fill = NA, linewidth = 0.5),
+        axis.line = element_blank())
+figure4
 
-# Export
-ggsave("exports/figures//figure3.jpeg", figure3, width = 16, height = 8, unit = "cm", dpi = 300)
+# Export Figure 4
+ggsave("exports/figures//Figure4.tiff", figure4, width = 16, height = 8, unit = "cm", dpi = 1200)
+ggsave("exports/figures//Figure4.pdf", figure4, width = 16, height = 8, unit = "cm", dpi = 1200, device = cairo_pdf)
 
 # Supplementary figure 3 ----
-# Set theme for plot
+# Define a custom theme for pigment-level coupling plots
 custom_theme <- theme(
   axis.text.y = element_text(colour = "black", size = 14),
   axis.text.x = element_text(colour = "black", size = 14),
@@ -676,21 +728,22 @@ custom_theme <- theme(
   axis.title.y = element_text(size = 14, colour = "black"),
   axis.title.x = element_text(size = 14, colour = "black"),
   panel.background = element_blank(),
-  panel.border = element_rect(color = "black", fill = NA, size = 1),
   legend.key = element_blank(),
   panel.grid.major = element_blank(),
   panel.grid.minor = element_blank(),
-  axis.ticks = element_line(size = 0.4),
-  axis.line = element_line(size = 0)
-)
+  axis.ticks = element_line(size = 0.4, linewidth = 0.5),
+  panel.border = element_rect(color = "black", fill = NA, linewidth = 0.5),
+  axis.line = element_blank())
 
+# Create facet labels combining pigment and treatment, later simplified in the labeller
 pigment_df$facet_group <- paste(pigment_df$pigment, pigment_df$treatment, sep = "_")
 
-# Visualize pigment coupling:
+# Visualize single-pigment coupling across N levels and treatments,
+# including null-model ribbons (S3).
 figureS3 <- ggplot(pigment_df, aes(x = N, y = pig_coup, 
-                                  group = treatment, 
-                                  color = treatment, 
-                                  fill = treatment)) +
+                                   group = treatment, 
+                                   color = treatment, 
+                                   fill = treatment)) +
   geom_line(size = 1, linewidth = 1) +
   geom_ribbon(aes(ymin = quan_coup_5.0, ymax = quan_coup_95.0), alpha = 0.2,
               show.legend = FALSE, linetype = 0) +
@@ -705,7 +758,7 @@ figureS3 <- ggplot(pigment_df, aes(x = N, y = pig_coup,
   scale_fill_manual(values = col_palette_treat) +
   facet_wrap(~ facet_group, ncol = 4, 
              labeller = labeller(facet_group = function(x) {
-               # Regex to keep only the text BEFORE the "_" (The Pigment Name)
+               # Regex to keep only the text BEFORE the "_" (the pigment name)
                sub("_.*", "", x) 
              })) +
   theme_minimal() +
@@ -723,16 +776,19 @@ figureS3 <- ggplot(pigment_df, aes(x = N, y = pig_coup,
 
 figureS3
 
-# Export:
-ggsave("exports/figures//figureS3.png", figureS3, width = 30, height = 24, unit = "cm", dpi = 300)
+# Export Supplementary Figure S3
+ggsave("exports/figures//FigureS3.tiff", figureS3, width = 30, height = 24, unit = "cm", dpi = 300)
+ggsave("exports/figures//FigureS3.pdf", figureS3, width = 30, height = 24, unit = "cm", dpi = 300, device = cairo_pdf)
 
-# Reshape the data into long format
+# Reshape pigment coupling data for pairwise comparison of N levels (Figure 5)
+# Here, N = 0 (control) is used as the x-axis reference and compared against
+# higher N loads (10, 20, 50 kg N ha-1 yr-1).
 pigment_df_long <- pigment_df %>%
   filter(N %in% c("0", "10", "20", "50")) %>%
   select(pigment, treatment, N, pig_coup) %>%
-  # Pivot into wide format and use N_X as columns
+  # Pivot into wide format with columns N_0, N_10, N_20, N_50
   pivot_wider(names_from = N, values_from = pig_coup, names_prefix = "N ") %>%
-  # Pivot into long but keeping N_0 for comparisons
+  # Pivot into long format keeping N 0 as the control axis
   pivot_longer(cols = c(`N 10`, `N 20`, `N 50`), 
                names_to = "comparison", 
                values_to = "pig_coup")
@@ -743,9 +799,11 @@ n_labels_fig_4 <- c(
   "N 50" = "50~kg~N~ha^{-1}~yr^{-1}")
 
 
-# Figure 4 ----
-# Plot all comparisons with N=0 in one plot, ensuring the same scale
-figure4 <- ggplot(pigment_df_long, aes(x = `N 0`, y = pig_coup)) +
+# Figure 5 ----
+# Scatterplots comparing pigment coupling at N = 0 (control) vs each N load.
+# - 1:1 line: no change in coupling
+# - Linear regression line summarises directional shifts in coupling.
+figure5 <- ggplot(pigment_df_long, aes(x = `N 0`, y = pig_coup)) +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray") +
   geom_smooth(method = "lm", se = FALSE, color = "black", linewidth = 0.5) +
   geom_point(aes(color = pigment), size = 1) +
@@ -756,7 +814,6 @@ figure4 <- ggplot(pigment_df_long, aes(x = `N 0`, y = pig_coup)) +
        y = "Single pigment coupling (N load)", color = "") +
   ylim(0.2, 0.9) +
   xlim(0.2, 0.9) +
-  # add 1:1 abline
   theme_minimal() +
   coord_fixed() +
   custom_theme +
@@ -769,317 +826,40 @@ figure4 <- ggplot(pigment_df_long, aes(x = `N 0`, y = pig_coup)) +
     legend.text = element_text(colour = "black", size =7),
     legend.key.size = unit(0.2, "cm"))
 
-print(figure4)
+print(figure5)
 
-ggsave("exports/figures//figure4.tiff", figure4, width = 20, height = 10, unit = "cm", dpi = 300)
-
-library(broom) # Essential for cleaning model outputs
+# Export Figure 5
+ggsave("exports/figures//Figure5.tiff", figure5, width = 20, height = 10, unit = "cm", dpi = 1200)
+ggsave("exports/figures//Figure5.pdf", figure5, width = 20, height = 10, unit = "cm", dpi = 1200, device = cairo_pdf)
 
 # Run the models
+# For each treatment × N-load comparison (column "comparison"), fit a linear
+# model: pig_coup (N-load) ~ pig_coup (N = 0). Extract slope, SE, p-value,
+# and R² to summarise how pigment coupling scales with N loading.
 lm_results <- pigment_df_long %>%
-  # Group by the factors you want to split the models by
   group_by(treatment, comparison) %>%
   nest() %>%
-  # Run the linear model on each nested group
-  # Formula: y ~ x  (Treatment Coupling ~ Control Coupling)
   mutate(model = map(data, ~lm(pig_coup ~ `N 0`, data = .x))) %>%
-  # Extract Coefficients (Slope & Intercept)
   mutate(tidied = map(model, tidy),
          glanced = map(model, glance))
 
-# Create a Clean Summary Table
+# Create a clean summary table (Table S1) with slope estimates and model fit
 tableS1 <- lm_results %>%
   unnest(tidied) %>%
-  filter(term == "`N 0`") %>% #
+  filter(term == "`N 0`") %>% 
   select(treatment, comparison, estimate, std.error, p.value) %>%
-  # Join with R-squared values
   left_join(
     lm_results %>% unnest(glanced) %>% select(treatment, comparison, r.squared, adj.r.squared),
     by = c("treatment", "comparison")) %>%
-  # rename comparison to N load:
   rename(N_load = comparison) %>%
-  # round numeric collumns to 0.001
   mutate(across(c(estimate, std.error, p.value, r.squared, adj.r.squared), ~ round(., 3)))
 
-# View the results
+# View the regression summary (optional)
 print(tableS1)
 
-# Export as supplementary tables S1
+# Export regression summary as Supplementary Table S1
 write.csv(tableS1, "exports/tables/TableS1.csv", row.names = FALSE)
 
-# Supplementary Figure 2: Network Plots ----
-
-library(igraph)
-library(ggraph)
-library(tidygraph)
-library(patchwork)
-library(tidyverse)
-library(cowplot)
-
-# Setup Colors
-pos <- "#2ECC71"
-neg <- "#FF4040"
-
-# Pigment shotcuts:
-pigment.shorts <- c(
-  "Neoxanthin" = "Neo",
-  "Violaxanthin" = "Vio",
-  "Antheraxanthin" = "Ant",
-  "Lutein" = "Lut",
-  "Zeaxanthin" = "Zea",
-  "Chlorophyll-b" = "Chl-b",
-  "Chlorophyll-a" = "Chl-a",
-  "β-Carotene" = "β-Car")
-
-theme.net <- theme(
-  panel.grid.major = element_blank(),
-  panel.grid.minor = element_blank(),
-  plot.title = element_text(size = 12, hjust = 0.5),
-  legend.position = "none",
-  axis.text = element_blank(),
-  axis.title = element_blank(),
-  plot.margin = margin(10, 10, 10, 10),
-  panel.border = element_rect(color = "black", fill = NA, size = 0.5)
-)
-
-# Define a fixed order for pigments so they appear in the same spot in the circle every time
-fixed_pigment_order <- sort(unique(pigment_df$pigment))
-
-# Process network data:
-net_tidy_list <- list()
-muestreo_un <- unique(paste(pigment_df$treatment, pigment_df$N, sep = "_"))
-
-for (trt_load in muestreo_un) {
-  
-  # Metadata
-  parts <- strsplit(trt_load, "_")[[1]]
-  curr_treatment <- parts[1]
-  curr_N <- parts[2]
-  
-  # --- STEP A: Prepare Nodes & Edges ---
-  current_meta <- pigment_df %>%
-    filter(
-      as.character(treatment) == as.character(curr_treatment),
-      as.character(N) == as.character(curr_N)
-    ) %>%
-    select(pigment, coup_sig, treatment, N) %>%  # Keep only the pigment name and the significance column
-    distinct() # ensure one row per pigment
-  
-  # PREPARE NODES
-  nodes_raw <- results_list[[trt_load]]$nodes %>%
-    as.data.frame() 
-  
-  # JOIN
-  # Now we only join by "pigment", because we already filtered treatment/N manually
-  nodes_annotated <- nodes_raw %>%
-    left_join(current_meta, by = "pigment") %>%
-    mutate(
-      # Assign Loop Variables manually
-      treatment = curr_treatment,
-      N = curr_N,
-      
-      # Create Labels
-      pigment_label = pigment.shorts[as.character(pigment)],
-      
-      # Create Color Logic
-      node_fill_color = case_when(
-        coup_sig == "sig" ~ "#1f78b4",       # Significant -> Blue
-        TRUE ~ "gray90"                      # Not Significant -> Gray
-      )
-    )
-  
-  # Get edges
-  edges_df <- edges_list[[trt_load]]
-  
-  # Create Graph Object to calculate topology metrics
-  temp_graph <- tbl_graph(nodes = nodes_annotated, edges = edges_df, directed = FALSE)
-  
-  # --- STEP B: Enhance Graph Data ---
-  net_tidy <- temp_graph %>%
-    activate(nodes) %>%
-    mutate(
-      # 1. Keep the original full name
-      pigment_full = pigment, 
-      # 2. New label
-      pigment_label = pigment.shorts[as.character(pigment)],
-      # Color logic
-      treatment = curr_treatment,
-      N = curr_N,
-      node_fill_color = ifelse(coup_sig == "sig", "#1f78b4", "gray90")
-    ) %>%
-    arrange(pigment) %>% # Sort nodes so they plot in order
-    activate(edges) %>%
-    mutate(
-      sign_cor = if_else(weight > 0, "pos", "neg"),
-      edge_color = ifelse(sign_cor == "pos", pos, neg),
-      # Make non-significant edges faint, significant ones solid
-      edge_alpha_val = if_else(sig_cor == "sig", 1, 0.5), 
-      edge_linetype = if_else(sig_cor == "sig", "solid", "dotted"),
-      weight = abs(weight)
-    )
-  
-  net_tidy_list[[trt_load]] <- net_tidy
-}
-
-# Define the Layout (Linear Layout used to make a Circle)
-# We use a linear layout sorted by our factor, then wrap it into a circle in coords
-
-network_plots <- list()
-
-for (trt_load in names(net_tidy_list)) {
-  
-  net_tidy <- net_tidy_list[[trt_load]]
-  
-  # Extract Title Info
-  parts <- strsplit(trt_load, "_")[[1]]
-  plot_title <- paste(parts[1], "-", parts[2], "kg N")
-  
-  # --- NETWORK ---
-  p <- ggraph(net_tidy, layout = 'linear', circular = TRUE) + 
-    
-    # --- EDGES ---
-    geom_edge_arc(
-      aes(color = sign_cor,               # Set color based on the sign
-          alpha = I(edge_alpha_val),      # Set transparency based on significance
-          width = weight,                 # Edge width by absolute correlation
-          linetype = I(edge_linetype))) + 
-    
-    scale_edge_width_continuous(
-      range = c(0.2, 2), 
-      limits = c(0, 1), 
-      breaks = c(0.25, 0.5, 0.75, 1),
-      name = "Correlation"
-    ) +
-    
-    scale_edge_color_manual(
-      values = c("pos" = pos, "neg" = neg), 
-      labels = c("Negative", "Positive"),
-      name = "Sign", guide = "none"
-    ) +
-    
-    # --- NODES ---
-    geom_node_point(
-      aes(fill = I(node_fill_color), size = 0.5), # Fill based on pigment coupling sig.
-      shape = 21, color = "white", stroke = 1) +
-    
-    # --- LABELS ---
-    # Push labels slightly outward
-    geom_node_text(
-      aes(
-        label = pigment_label,
-        # Dynamic Nudge: Pushes the "ideal" label position outward
-        nudge_x = x * 1.2, 
-        nudge_y = y * 1.2
-      ),
-      
-      # Keep Repel ON to fix overlaps
-      repel = TRUE,
-      
-      # keep it clean
-      segment.color = NA,
-      box.padding = 0.1,
-      point.padding = 0.1, 
-      force = 1,
-      
-      size = 3, 
-      color = "black"
-    ) +
-    
-    # LEGEND
-    guides(
-      edge_color = "none",
-      edge_width = "none",
-      edge_alpha = "none",
-      fill = "none",
-      size = "none",
-      color = "none"
-    ) +
-    
-    # --- THEME ---
-    theme_minimal() +
-    coord_fixed(clip = "off", 
-                xlim = c(-1.1, 1.1),
-                ylim = c(-1.1, 1.1)) +
-    labs(title = plot_title) +
-    theme.net
-  
-  network_plots[[trt_load]] <- p
-
-}
-
-
-# Arrange Logically
-desired_order <- c(
-  "Drought_0", "Drought_10", "Drought_20", "Drought_50",
-  "Recovery_0", "Recovery_10", "Recovery_20", "Recovery_50"
-)
-
-# Filter/Sort 
-ordered_plots <- network_plots[desired_order[desired_order %in% names(network_plots)]]
-
-
-# Define Column Titles
-col_titles <- c("0 kg·N·ha-1·yr-1",
-                "10 kg·N·ha-1·yr-1",
-                "20 kg·N·ha-1·yr-1",
-                "50 kg·N·ha-1·yr-1")
-
-# Separate list into Top (Drought) and Bottom (Recovery) rows
-row1_plots <- ordered_plots[1:4]
-row2_plots <- ordered_plots[5:8]
-
-# Loop through TOP ROW to add titles
-for(i in 1:4) {
-  row1_plots[[i]] <- row1_plots[[i]] + 
-    ggtitle(col_titles[i]) + 
-    theme(
-      plot.title = element_text(hjust = 0.5, size = 14, margin = margin(b=10)),
-      plot.margin = margin(5, 5, 5, 5) 
-    )
-}
-
-# Loop through BOTTOM ROW to ensure NO titles
-for(i in 1:4) {
-  row2_plots[[i]] <- row2_plots[[i]] + 
-    labs(title = NULL) + # Remove title if it exists
-    theme(plot.margin = margin(5, 5, 5, 5))
-}
-
-# Function to create a vertical label
-create_row_label <- function(label_text) {
-  ggplot() + 
-    annotate("text", 
-             x = 1, 
-             y = 0.5, 
-             label = label_text, 
-             angle = 90, 
-             size = 6, 
-             color = "black",
-             hjust = 0.5) +
-    theme_void() +
-    # Fix the limits so x=1 is exactly the edge
-    coord_cartesian(xlim = c(0, 1), ylim = c(0, 1), clip = "off") + 
-    # Negative Right Margin pulls the next plot closer
-    theme(plot.margin = margin(t = 0, r = 14, b = 0, l = 0))
-}
-
-label_drought <- create_row_label("Drought")
-label_recov   <- create_row_label("Recovery")
-
-# Build Row 1 
-# widths = c(0.5, 15) makes the label column much narrower
-row1_combined <- label_drought + wrap_plots(row1_plots, nrow = 1) + 
-  plot_layout(widths = c(0.5, 30)) 
-
-# Build Row 2 
-row2_combined <- label_recov + wrap_plots(row2_plots, nrow = 1) + 
-  plot_layout(widths = c(0.5, 30))
-
-figure2 <- (row1_combined / row2_combined) +
-  plot_layout(guides = "collect") 
-
-# View and Save
-print(figure2)
-
-ggsave("exports/figures/figure2.tiff", figure2, width = 16, height = 10)
- 
+# Export network-related objects for downstream network visualisation
+save(edges_list, pigment_df, results_list,
+     file = "data/network_data.rdata")
