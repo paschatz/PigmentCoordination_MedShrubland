@@ -4,7 +4,7 @@ This repository contains data and R code accompanying the manuscript:
 
 > Ochoa-Hueso R., Chatzopoulos P., Casimiro-Soriguer R. **Pigment disorganization in *Salvia rosmarinus* under drought and nitrogen addition in a Mediterranean shrubland**. *Functional Plant Biology*, in revision.
 
-We quantify how an extended summer drought and experimental nitrogen (N) addition affect photosynthetic and photoprotective pigments in rosemary (*Salvia rosmarinus*) in a semi-arid Mediterranean shrubland in central Spain. Beyond changes in individual pigment concentrations, we use an ecological coupling framework to evaluate how drought induces pigment disorganization (decoupling) and how recovery after autumn rainfall restores pigment coupling.
+We quantify how an extended summer drought and experimental nitrogen (N) addition affect photosynthetic and photoprotective pigments in rosemary (*Salvia rosmarinus*) in a semi-arid Mediterranean shrubland in central Spain. Beyond changes in individual pigment concentrations, we use an ecological coupling framework to evaluate how drought induced pigment disorganization (decoupling) and how recovery after autumn rainfall restores pigment coupling.
 
 ## Repository contents
 ```text
