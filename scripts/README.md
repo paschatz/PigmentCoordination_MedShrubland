@@ -2,9 +2,7 @@
 
 This folder contains all R scripts used to retrieve data, process climatic and pigment information, run statistical analyses, and generate the figures included in the publication:
 
-**Ochoa-Hueso R., Chatzopoulos P., Casimiro-Soriguer R.
-*Pigment disorganization in Salvia rosmarinus under drought and nitrogen addition in a Mediterranean shrubland.*
-Functional Plant Biology, in revision.**
+> Ochoa-Hueso R., Chatzopoulos P., Casimiro-Soriguer R. **Pigment disorganization in *Salvia rosmarinus* under drought and nitrogen addition in a Mediterranean shrubland.** *Functional Plant Biology*, in revision.
 
 All paths referenced inside the scripts are relative to the repository root.
 
