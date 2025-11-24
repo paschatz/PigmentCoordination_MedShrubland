@@ -125,10 +125,10 @@ recovery_end   <- as.Date("2011-12-27")
 figure1 <- ggplot(plot_data, aes(x = date, y = prec)) +
   annotate("rect", xmin = drought_start, xmax = drought_end, 
            ymin = 0, ymax = Inf, 
-           fill = "#d24644", alpha = 0.3) +
+           fill = "#D55E00", alpha = 0.3) +
   annotate("rect", xmin = recovery_start, xmax = recovery_end, 
            ymin = 0, ymax = Inf, 
-           fill = "#3fbc73", alpha = 0.3) +
+           fill = "#009E73", alpha = 0.3) +
   
   geom_col(fill = "#3b528b", width = 1, linewidth = 0, color = NA) +
   
@@ -140,13 +140,13 @@ figure1 <- ggplot(plot_data, aes(x = date, y = prec)) +
     expand = c(0, 0)) +
   
   # Mark sampling dates
-  geom_vline(xintercept = sampling_drought, linetype = "dashed", color = "#A6611A", size = 0.5) +
-  geom_vline(xintercept = sampling_recovery, linetype = "dashed", color = "#018571", size = 0.5) +
+  geom_vline(xintercept = sampling_drought, linetype = "dashed", color = "#D55E00", size = 0.5) +
+  geom_vline(xintercept = sampling_recovery, linetype = "dashed", color = "#009E73", size = 0.5) +
   
   annotate("text", x = sampling_drought, y = 20, label = "Drought\nSampling", 
-           vjust = 1, hjust = 1.1, size = 2, color = "#A6611A") +
+           vjust = 1, hjust = 1.1, size = 2, color = "#D55E00") +
   annotate("text", x = sampling_recovery, y = 20, label = "Recovery\nSampling", 
-           vjust = 1, hjust = 1.1, size = 2, color = "#018571") +
+           vjust = 1, hjust = 1.1, size = 2, color = "#009E73") +
   
   # Add labels for rainfall events during the drought period
   geom_text_repel(

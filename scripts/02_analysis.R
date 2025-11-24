@@ -99,7 +99,7 @@ stats_data <- pigment_ratios %>%
 
 # Define colour palettes for N levels and treatments
 col_palette_N <- c("#90d743", "#6ece58", "#4ec36b", "#25ab82")
-col_palette_treat <- c("Drought" = "#A6611A", "Recovery" = "#018571")
+col_palette_treat <- c("Drought" = "#D55E00", "Recovery" = "#009E73")
 
 # Define a unified publication-style theme to be reused across figures
 theme_pub <- theme_minimal() +
@@ -216,7 +216,7 @@ data_mean <- data_long %>%
   mutate(pigment = fct_recode(pigment,
                               "Neo" = "Neoxanthin",
                               "Vio" = "Violaxanthin",
-                              "Anth" = "Antheraxanthin",
+                              "Ant" = "Antheraxanthin",
                               "Lut" = "Lutein",
                               "Zea" = "Zeaxanthin",
                               "Chl-b" = "Chlorophyll-b",
@@ -225,7 +225,7 @@ data_mean <- data_long %>%
 
 # Enforce a consistent pigment ordering across all figures
 data_mean$pigment <- fct_relevel(data_mean$pigment, 
-                                 "Anth", "β-Car", "Chl-a", "Chl-b", "Lut", "Neo", "Vio", "Zea", "AZ", "VAZ", "AZ/VAZ")
+                                 "Ant", "β-Car", "Chl-a", "Chl-b", "Lut", "Neo", "Vio", "Zea", "AZ", "VAZ", "AZ/VAZ")
 
 # Figure S1: Pigment Concentrations by Nitrogen ------------------------------
 
@@ -368,13 +368,13 @@ sig_df2 <- sig_results %>%
 
 # Recode pigment names to match plotting labels
 sig_df2$pigment <- fct_recode(sig_df2$pigment,
-                              "Neo" = "Neoxanthin", "Vio" = "Violaxanthin", "Anth" = "Antheraxanthin",
+                              "Neo" = "Neoxanthin", "Vio" = "Violaxanthin", "Ant" = "Antheraxanthin",
                               "Lut" = "Lutein", "Zea" = "Zeaxanthin", "Chl-b" = "Chlorophyll-b",
                               "Chl-a" = "Chlorophyll-a", "β-Car" = "β-Carotene")
 
 # Ensure pigment order is consistent with other figures
 sig_df2$pigment <- fct_relevel(sig_df2$pigment, 
-                               "Anth", "β-Car", "Chl-a", "Chl-b", "Lut", "Neo", "Vio", "Zea", "AZ", "VAZ", "AZ/VAZ")
+                               "Ant", "β-Car", "Chl-a", "Chl-b", "Lut", "Neo", "Vio", "Zea", "AZ", "VAZ", "AZ/VAZ")
 
 
 figure2 <- ggplot(data_mean %>% filter(!pigment %in% c("AZ", "VAZ")),
@@ -863,3 +863,4 @@ write.csv(tableS1, "exports/tables/TableS1.csv", row.names = FALSE)
 # Export network-related objects for downstream network visualisation
 save(edges_list, pigment_df, results_list,
      file = "data/network_data.rdata")
+
