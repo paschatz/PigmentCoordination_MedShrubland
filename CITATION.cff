@@ -1,14 +1,14 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 authors:
-- family-names: “Chatzopoulos”
-  given-names: “Paschalis”
-  orcid: “https://orcid.org/0000-0002-3456-7203”
-- family-names: “Ochoa-Hueso”
-  given-names: “Raul”
-  orcid: “https://orcid.org/0000-0002-1839-6926”
-title: “Code for: Pigment disorganization in Salvia rosmarinus under drought and nitrogen addition in a Mediterranean shrubland”
-version: v.1.1.0
-doi: 10.5281/zenodo.17725380 
+  - family-names: "Chatzopoulos"
+    given-names: "Paschalis"
+    orcid: "https://orcid.org/0000-0002-3456-7203"
+  - family-names: "Ochoa-Hueso"
+    given-names: "Raul"
+    orcid: "https://orcid.org/0000-0002-1839-6926"
+title: "Code for: Pigment disorganization in Salvia rosmarinus under drought and nitrogen addition in a Mediterranean shrubland"
+version: "1.1.0"
+doi: "10.5281/zenodo.17725380"
 date-released: 2025-11-26
-Url: “https://github.com/paschatz/PigmentCoordination_MedShrubland”
+url: "https://github.com/paschatz/PigmentCoordination_MedShrubland"
