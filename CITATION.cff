@@ -7,16 +7,17 @@
 \pard\pardeftab720\partightenfactor0
 
 \f0\fs28 \cf2 \expnd0\expndtw0\kerning0
-cff-version: 1.1.0\
+cff-version: 1.2.0\
 message: "If you use this software, please cite it as below."\
 authors:\
-- family-name: \'93Chatzopoulos\'94\
+- family-names: \'93Chatzopoulos\'94\
   given-names: \'93Paschalis\'94\
   orcid: \'93https://orcid.org/0000-0002-3456-7203\'94\
-- family-name: \'93Ochoa-Hueso\'94\
+- family-names: \'93Ochoa-Hueso\'94\
   given-names: \'93Raul\'94\
   orcid: \'93https://orcid.org/0000-0002-1839-6926\'94\
 title: \'93Code for: Pigment disorganization in Salvia rosmarinus under drought and nitrogen addition in a Mediterranean shrubland\'94\
 version: v.1.1.0\
+doi: {\field{\*\fldinst{HYPERLINK "https://doi.org/10.5281/zenodo.17725380"}}{\fldrslt 10.5281/zenodo.17725380}} \
 date-released: 2025-11-26\
 Url: \'93{\field{\*\fldinst{HYPERLINK "https://github.com/paschatz/PigmentCoordination_MedShrubland"}}{\fldrslt https://github.com/paschatz/PigmentCoordination_MedShrubland}}\'94}
